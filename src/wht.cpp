@@ -49,7 +49,9 @@ std::vector<std::size_t> permutation_from_hadamard(std::size_t n, Ordering ord) 
     std::vector<std::size_t> p(n);
 
     if (ord == Ordering::Hadamard) {
-        for (std::size_t i = 0; i < n; ++i) p[i] = i;
+        for (std::size_t i = 0; i < n; ++i) {
+            p[i] = i;
+        }
         return p;
     }
 
@@ -62,10 +64,12 @@ std::vector<std::size_t> permutation_from_hadamard(std::size_t n, Ordering ord) 
     }
 
     for (std::size_t i = 0; i < n; ++i) {
-        const auto s =
-            static_cast<std::uint32_t>(bit_reverse(gray_code(static_cast<std::uint32_t>(i)), bits));
+        const auto s = static_cast<std::uint32_t>(
+            bit_reverse(gray_code(static_cast<std::uint32_t>(i)), bits)
+        );
         p[i] = static_cast<std::size_t>(inverse_gray_code(s));
     }
+
     return p;
 }
 
@@ -78,13 +82,29 @@ std::vector<std::size_t> inverse_permutation(const std::vector<std::size_t>& p) 
 }
 
 Plan::Plan(std::size_t n_, Ordering ord_, bool ortho_)
-    : n(n_), ordering(ord_), orthonormal(ortho_) {
+    : n(n_),
+      ordering(ord_),
+      orthonormal(ortho_),
+      forward_scale(1.0f),
+      inverse_scale(1.0f) {
     if (!is_power_of_two(n)) {
         throw std::invalid_argument("wht::Plan: n must be power of two");
     }
-    perm = permutation_from_hadamard(n, ordering);
-    inv_perm = inverse_permutation(perm);
-    scratch.resize(n, 0.0f);
+
+    if (orthonormal) {
+        const float s = 1.0f / std::sqrt(static_cast<float>(n));
+        forward_scale = s;
+        inverse_scale = s;
+    } else {
+        forward_scale = 1.0f;
+        inverse_scale = 1.0f / static_cast<float>(n);
+    }
+
+    if (ordering != Ordering::Hadamard) {
+        perm = permutation_from_hadamard(n, ordering);
+        inv_perm = inverse_permutation(perm);
+        scratch.resize(n, 0.0f);
+    }
 }
 
 void fwht_inplace(float* a, std::size_t n) {
@@ -95,13 +115,14 @@ void fwht_inplace(float* a, std::size_t n) {
     for (std::size_t h = 1; h < n; h <<= 1U) {
         const std::size_t step = h << 1U;
         for (std::size_t i = 0; i < n; i += step) {
-            float* left = a + i;
-            float* right = a + i + h;
+            float* l = a + i;
+            float* r = l + h;
+
             for (std::size_t j = 0; j < h; ++j) {
-                const float x = left[j];
-                const float y = right[j];
-                left[j] = x + y;
-                right[j] = x - y;
+                const float x = l[j];
+                const float y = r[j];
+                l[j] = x + y;
+                r[j] = x - y;
             }
         }
     }
@@ -126,9 +147,11 @@ void reorder_to_hadamard(const float* in, float* out, const Plan& plan) {
 void forward_inplace(float* data, Plan& plan) {
     fwht_inplace(data, plan.n);
 
-    if (plan.orthonormal) {
-        const float s = 1.0f / std::sqrt(static_cast<float>(plan.n));
-        for (std::size_t i = 0; i < plan.n; ++i) data[i] *= s;
+    if (plan.forward_scale != 1.0f) {
+        const float s = plan.forward_scale;
+        for (std::size_t i = 0; i < plan.n; ++i) {
+            data[i] *= s;
+        }
     }
 
     if (plan.ordering != Ordering::Hadamard) {
@@ -145,12 +168,11 @@ void inverse_inplace(float* data, Plan& plan) {
 
     fwht_inplace(data, plan.n);
 
-    if (plan.orthonormal) {
-        const float s = 1.0f / std::sqrt(static_cast<float>(plan.n));
-        for (std::size_t i = 0; i < plan.n; ++i) data[i] *= s;
-    } else {
-        const float s = 1.0f / static_cast<float>(plan.n);
-        for (std::size_t i = 0; i < plan.n; ++i) data[i] *= s;
+    if (plan.inverse_scale != 1.0f) {
+        const float s = plan.inverse_scale;
+        for (std::size_t i = 0; i < plan.n; ++i) {
+            data[i] *= s;
+        }
     }
 }
 

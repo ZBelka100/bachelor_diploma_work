@@ -87,13 +87,9 @@ Spectrogram compute(
     const auto win = window::make(window_type, frame_size);
 
 #ifdef USE_FFTW
-    const std::size_t nfft = frame_size; // FFTW handles arbitrary sizes efficiently
+    const std::size_t nfft = frame_size;
 #else
-    const std::size_t nfft = [&]{
-        std::size_t p = 1;
-        while (p < frame_size) p <<= 1U;
-        return p;
-    }();
+    const std::size_t nfft = next_power_of_two(frame_size);
 #endif
 
     const std::size_t bins = nfft / 2 + 1;

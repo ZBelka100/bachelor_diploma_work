@@ -6,12 +6,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
 namespace pseudospectrum {
 
-static float safe_log10(float x) {
+static inline float safe_log10(float x) {
     constexpr float eps = 1e-12f;
     return std::log10(std::max(x, eps));
 }
@@ -48,22 +49,25 @@ FrameTransform compute_wht_frames(
 
     std::vector<float> buf(n, 0.0f);
 
+    const float* sig = signal.data();
+    const float* win_ptr = win.data();
+    float* coeffs_ptr = out.coeffs.data();
+
     for (std::size_t m = 0; m < frames; ++m) {
         const std::size_t start = m * hop;
+        float* dst = coeffs_ptr + m * n;
 
         std::fill(buf.begin(), buf.end(), 0.0f);
 
-        for (std::size_t i = 0; i < frame_size; ++i) {
-            const std::size_t pos = start + i;
-            if (pos < signal.size()) {
-                buf[i] = signal[pos] * win[i];
-            }
+        const std::size_t available =
+            (start < signal.size()) ? std::min(frame_size, signal.size() - start) : 0;
+
+        for (std::size_t i = 0; i < available; ++i) {
+            buf[i] = sig[start + i] * win_ptr[i];
         }
 
         wht::forward_inplace(buf.data(), plan);
-
-        float* dst = out.coeffs.data() + m * n;
-        std::copy(buf.begin(), buf.end(), dst);
+        std::memcpy(dst, buf.data(), n * sizeof(float));
     }
 
     return out;
@@ -84,13 +88,17 @@ Spectrogram compute_from_frames(const FrameTransform& frames_in) {
 
     float global_max_power = 0.0f;
 
+    const float* coeffs = frames_in.coeffs.data();
+    float* power = out.power.data();
+
     for (std::size_t m = 0; m < out.frames; ++m) {
         out.time_s[m] = static_cast<float>(m * out.hop) / static_cast<float>(out.sample_rate);
 
+        const std::size_t row = m * out.bins;
         for (std::size_t k = 0; k < out.bins; ++k) {
-            const float c = frames_in.coeffs[m * out.bins + k];
+            const float c = coeffs[row + k];
             const float p = c * c;
-            out.power[m * out.bins + k] = p;
+            power[row + k] = p;
             global_max_power = std::max(global_max_power, p);
         }
     }
@@ -101,10 +109,10 @@ Spectrogram compute_from_frames(const FrameTransform& frames_in) {
         out.db[i] = 10.0f * safe_log10(out.power[i] / ref);
     }
 
+    const float fs = static_cast<float>(out.sample_rate);
+    const float denom = 2.0f * static_cast<float>(out.bins);
     for (std::size_t k = 0; k < out.bins; ++k) {
-        out.pseudo_freq_hz[k] =
-            static_cast<float>(k) * static_cast<float>(out.sample_rate) /
-            (2.0f * static_cast<float>(out.bins));
+        out.pseudo_freq_hz[k] = static_cast<float>(k) * fs / denom;
     }
 
     return out;

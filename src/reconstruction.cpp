@@ -3,6 +3,7 @@
 #include "wht.hpp"
 #include "window.hpp"
 
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -31,20 +32,25 @@ ReconstructionResult from_wht_frames(
     out.window_mass.assign(out_size, 0.0f);
 
     const auto win = window::make(synthesis_window, frames.frame_size);
+    const float* win_ptr = win.data();
+
+    wht::Plan plan(frames.bins, ordering, orthonormal);
+    std::vector<float> buf(frames.bins, 0.0f);
+
+    const float* coeffs = frames.coeffs.data();
 
     for (std::size_t m = 0; m < frames.frames; ++m) {
-        std::vector<float> y(frames.bins, 0.0f);
-        for (std::size_t k = 0; k < frames.bins; ++k) {
-            y[k] = frames.coeffs[m * frames.bins + k];
-        }
+        const std::size_t row = m * frames.bins;
+        std::memcpy(buf.data(), coeffs + row, frames.bins * sizeof(float));
 
-        auto x = wht::inverse(y, ordering, orthonormal);
+        wht::inverse_inplace(buf.data(), plan);
 
         const std::size_t start = m * frames.hop;
         for (std::size_t i = 0; i < frames.frame_size; ++i) {
-            const float v = x[i] * win[i];
+            const float w = win_ptr[i];
+            const float v = buf[i] * w;
             out.signal[start + i] += v;
-            out.window_mass[start + i] += win[i] * win[i];
+            out.window_mass[start + i] += w * w;
         }
     }
 

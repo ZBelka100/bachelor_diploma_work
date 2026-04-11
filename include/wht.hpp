@@ -29,6 +29,9 @@ struct Plan {
 
     Plan() = default;
     Plan(std::size_t n_, Ordering ord_, bool ortho_);
+    
+    float forward_scale;
+    float inverse_scale;
 };
 
 void fwht_inplace(float* a, std::size_t n);
