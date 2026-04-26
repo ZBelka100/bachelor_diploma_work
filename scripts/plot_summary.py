@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 from pathlib import Path
 
@@ -8,44 +9,82 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-def make_bar(df, metric, out_path):
-    pivot = df.pivot_table(
-        index="group",
-        columns=["transform", "order"],
-        values=metric,
-        aggfunc="mean"
-    )
-    ax = pivot.plot(kind="bar", figsize=(10, 5))
-    ax.set_ylabel(metric)
-    ax.set_title(metric)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=200)
-    plt.close()
+def plot_metric_by_window(df: pd.DataFrame, metric: str, ylabel: str, out_dir: Path) -> None:
+    windows = sorted(df["window"].dropna().unique())
+
+    for window_name in windows:
+        sub = df[df["window"] == window_name].copy()
+        if sub.empty:
+            continue
+
+        plt.figure(figsize=(8, 5))
+
+        for method in sorted(sub["method"].dropna().unique()):
+            s = sub[sub["method"] == method].sort_values("frame")
+            if s.empty:
+                continue
+            plt.plot(
+                s["frame"],
+                s[metric],
+                marker="o",
+                label=method,
+            )
+
+        plt.xlabel("Размер кадра")
+        plt.ylabel(ylabel)
+        plt.title(f"{ylabel} по размеру кадра ({window_name})")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(out_dir / f"{metric}_{window_name}.png", dpi=200)
+        plt.close()
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default="results/results_summary.csv")
-    parser.add_argument("--plots-dir", default="results/plots")
+    parser.add_argument(
+        "--input",
+        default="data/reports/summary/window_sweep_summary.csv",
+        help="Path to aggregated summary CSV",
+    )
+    parser.add_argument(
+        "--plots-dir",
+        default="data/plots/sweeps/summary",
+        help="Directory to save plots",
+    )
     args = parser.parse_args()
 
+    input_path = Path(args.input)
     plots_dir = Path(args.plots_dir)
+
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input CSV not found: {input_path}")
+
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    df = pd.read_csv(args.input)
+    df = pd.read_csv(input_path)
 
-    metrics = [
-        "snr_db_mean",
-        "rmse_mean",
-        "energy_topk_mean",
-        "peak_ratio_mean",
-        "sparsity_ratio_db60_mean",
+    required = {"method", "window", "frame"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+
+    metric_specs = [
+        ("snr_db_mean", "SNR, dB"),
+        ("rmse_mean", "RMSE"),
+        ("mse_mean", "MSE"),
+        ("transform_ms_mean", "Время преобразования, мс"),
+        ("recon_ms_mean", "Время реконструкции, мс"),
+        ("total_ms_mean", "Общее время, мс"),
     ]
 
-    for metric in metrics:
-        make_bar(df, metric, plots_dir / f"{metric}.png")
+    for metric, ylabel in metric_specs:
+        if metric in df.columns:
+            plot_metric_by_window(df, metric, ylabel, plots_dir)
 
     print(f"Saved plots to: {plots_dir}")
+    for p in sorted(plots_dir.glob("*.png")):
+        print(" -", p.name)
 
 
 if __name__ == "__main__":

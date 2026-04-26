@@ -10,22 +10,35 @@ ORDER="${2:-sequency}"
 WINDOWS=(rect hann sqrt-hann)
 FRAMES=(256 512 1024 2048)
 
+BUILD_DIR="${ROOT}/build"
+APP_BIN="${BUILD_DIR}/app"
+
 if [[ ! -f "${CSV_INPUT}" ]]; then
   echo "Ошибка: не найден ${CSV_INPUT}" >&2
   exit 1
 fi
 
 mkdir -p \
-  "${ROOT}/build" \
   "${ROOT}/data/out/sweeps/window_size" \
   "${ROOT}/data/plots/sweeps/window_size" \
   "${ROOT}/data/reports/summary"
 
-cmake -S "${ROOT}" -B "${ROOT}/build" -DCMAKE_BUILD_TYPE=Release -DUSE_FFTW=OFF
-cmake --build "${ROOT}/build" -j
+echo "==> Удаляю старую сборку: ${BUILD_DIR}"
+rm -rf "${BUILD_DIR}"
+
+cmake -S "${ROOT}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release -DUSE_FFTW=OFF
+cmake --build "${BUILD_DIR}" -j
+
+if [[ ! -x "${APP_BIN}" ]]; then
+  echo "Ошибка: не найден бинарник ${APP_BIN}" >&2
+  exit 1
+fi
 
 MASTER_SUMMARY_CSV="${ROOT}/data/reports/summary/window_sweep_runs_all_windows.csv"
+METRICS_CSV="${ROOT}/data/reports/summary/window_sweep_metrics.csv"
+
 echo "dataset,index,file_name,frame,hop,window,order,out_prefix,plot_dir,status" > "${MASTER_SUMMARY_CSV}"
+rm -f "${METRICS_CSV}"
 
 calc_hop() {
   local frame="$1"
@@ -59,14 +72,14 @@ run_one() {
     local plot_dir="${ROOT}/data/plots/sweeps/window_size/${window}/${dataset}/${stem}/${config}"
     local out_prefix="${out_dir}/${stem}"
 
-    mkdir -p "${out_dir}"
+    mkdir -p "${out_dir}" "${plot_dir}"
 
     echo
     echo "==> window=${window} dataset=${dataset} index=${index} file=${file_name} config=${config}"
 
     local status="ok"
 
-    if ! "${ROOT}/build/app" \
+    if ! "${APP_BIN}" \
       --input "${full_path}" \
       --out "${out_prefix}" \
       --frame "${frame}" \
@@ -74,7 +87,9 @@ run_one() {
       --window "${window}" \
       --order "${ORDER}" \
       --do-stft 1 \
-      --reconstruct "${out_prefix}_recon.wav"; then
+      --reconstruct "${out_prefix}_wht_recon.wav" \
+      --stft-reconstruct "${out_prefix}_stft_recon.wav" \
+      --summary-csv "${METRICS_CSV}"; then
       echo "Ошибка: app завершился с ошибкой для ${file_name} (${config})" >&2
       status="app_failed"
       printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
@@ -120,7 +135,8 @@ done
 
 echo
 echo "Готово."
-echo "Общая сводка: ${MASTER_SUMMARY_CSV}"
+echo "Общая сводка запусков: ${MASTER_SUMMARY_CSV}"
+echo "CSV метрик и времени: ${METRICS_CSV}"
 echo "Сводки по типам окна:"
 for window in "${WINDOWS[@]}"; do
   echo "  ${ROOT}/data/reports/summary/window_sweep_runs_${window}.csv"

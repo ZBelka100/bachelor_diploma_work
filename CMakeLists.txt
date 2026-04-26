@@ -15,10 +15,10 @@ option(ENABLE_FAST_MATH "Enable fast math optimizations" OFF)
 option(ENABLE_NATIVE_OPT "Enable -march=native" ON)
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(SNDFILE REQUIRED sndfile)
+pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
 
 if (USE_FFTW)
-    pkg_check_modules(FFTW3F REQUIRED fftw3f)
+    pkg_check_modules(FFTW3F REQUIRED IMPORTED_TARGET fftw3f)
 endif()
 
 include(CheckIPOSupported)
@@ -38,21 +38,15 @@ add_library(core
 
 target_include_directories(core PUBLIC
     include
-    ${SNDFILE_INCLUDE_DIRS}
 )
 
 target_link_libraries(core PUBLIC
-    ${SNDFILE_LIBRARIES}
-)
-
-target_compile_options(core PRIVATE
-    ${SNDFILE_CFLAGS_OTHER}
+    PkgConfig::SNDFILE
 )
 
 if (USE_FFTW)
     target_compile_definitions(core PRIVATE USE_FFTW=1)
-    target_include_directories(core PRIVATE ${FFTW3F_INCLUDE_DIRS})
-    target_link_libraries(core PRIVATE ${FFTW3F_LIBRARIES})
+    target_link_libraries(core PUBLIC PkgConfig::FFTW3F)
 endif()
 
 add_library(bench_external
@@ -71,9 +65,8 @@ if (USE_FFHT)
 endif()
 
 if (USE_FFTW)
-    target_include_directories(bench_external PRIVATE ${FFTW3F_INCLUDE_DIRS})
-    target_link_libraries(bench_external PRIVATE ${FFTW3F_LIBRARIES})
     target_compile_definitions(bench_external PRIVATE USE_FFTW=1)
+    target_link_libraries(bench_external PUBLIC PkgConfig::FFTW3F)
 endif()
 
 add_executable(app
@@ -81,10 +74,18 @@ add_executable(app
 )
 target_link_libraries(app PRIVATE core)
 
+if (USE_FFTW)
+    target_link_libraries(app PRIVATE PkgConfig::FFTW3F)
+endif()
+
 add_executable(benchmark_app
     apps/benchmark.cpp
 )
 target_link_libraries(benchmark_app PRIVATE core bench_external)
+
+if (USE_FFTW)
+    target_link_libraries(benchmark_app PRIVATE PkgConfig::FFTW3F)
+endif()
 
 add_executable(test_wht
     tests/test_wht.cpp
