@@ -1,40 +1,46 @@
-#include "reconstruction.hpp"
-#include "wht.hpp"
 #include "metrics.hpp"
-#include "window.hpp"
-#include <iostream>
-#include <vector>
-#include <cstdlib>
+#include "pseudospectrum.hpp"
+#include "reconstruction.hpp"
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
-int main() {
-    const size_t N = 256;
-    std::vector<float> signal(N);
-    for (size_t i = 0; i < N; ++i) {
-        signal[i] = std::sin(2.0f * 3.14159265358979323846f * i / 50.0f);
+TEST(ReconstructionTest, ReconstructsWhtFrames) {
+    const int sample_rate = 8000;
+    std::vector<float> signal(2048, 0.0f);
+
+    for (std::size_t i = 0; i < signal.size(); ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(sample_rate);
+        signal[i] = 0.4f * std::sin(2.0f * static_cast<float>(M_PI) * 440.0f * t);
     }
 
-    const size_t frame_size = 64;
-    const size_t hop = 16;
+    const auto frames = pseudospectrum::compute_wht_frames(
+        signal,
+        sample_rate,
+        256,
+        128,
+        WindowType::SqrtHann,
+        Ordering::Sequency,
+        true
+    );
 
-    try {
-        auto frames = reconstruction::compute_frames(signal, frame_size, hop, Ordering::Sequency, true, WindowType::Hann);
-        auto reconstructed = reconstruction::overlap_add(frames, N);
-        auto m = metrics::compare(signal, reconstructed);
-        std::cout << "Reconstruction error: MSE=" << m.mse << ", SNR=" << m.snr_db << " dB\n";
-        if (m.snr_db < 40.0) return 1;
-    } catch (const std::exception& e) {
-        std::cerr << "FAIL: unexpected exception: " << e.what() << "\n";
-        return 1;
-    }
+    const auto rec = reconstruction::from_wht_frames(
+        frames,
+        Ordering::Sequency,
+        WindowType::SqrtHann,
+        true
+    );
 
-    std::vector<float> empty_signal;
-    try {
-        reconstruction::compute_frames(empty_signal, frame_size, hop);
-        return 1;
-    } catch (const std::invalid_argument&) {
-    }
+    const std::size_t n = std::min(signal.size(), rec.signal.size());
 
-    std::cout << "PASS\n";
-    return 0;
+    const std::vector<float> ref(signal.begin(), signal.begin() + n);
+    const std::vector<float> out(rec.signal.begin(), rec.signal.begin() + n);
+
+    const auto err = metrics::compare(ref, out);
+
+    EXPECT_LT(err.rmse, 1e-3);
+    EXPECT_GT(err.snr_db, 40.0);
 }

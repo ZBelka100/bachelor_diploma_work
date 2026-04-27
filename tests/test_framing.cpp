@@ -1,46 +1,42 @@
 #include "framing.hpp"
-#include <iostream>
-#include <vector>
-#include <cstdlib>
+
+#include <gtest/gtest.h>
+
 #include <stdexcept>
+#include <vector>
 
-int main() {
-    std::vector<float> x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+TEST(FramingTest, MakeFramePadsWithZeros) {
+    const std::vector<float> x = {1.0f, 2.0f, 3.0f};
 
-    auto frame = framing::make_frame(x, 0, 5);
-    std::cout << "make_frame full\n";
-    if (frame.size() != 5) return 1;
-    for (size_t i = 0; i < 5; ++i) {
-        if (frame[i] != x[i]) return 1;
-    }
+    const auto frame = framing::make_frame(x, 0, 5);
 
-    auto frame2 = framing::make_frame(x, 3, 5);
-    std::cout << "make_frame with zero-padding\n";
-    if (frame2.size() != 5) return 1;
-    if (frame2[0] != 4.0f || frame2[1] != 5.0f) return 1;
-    if (frame2[2] != 0.0f || frame2[3] != 0.0f || frame2[4] != 0.0f) return 1;
+    ASSERT_EQ(frame.size(), 5);
+    EXPECT_FLOAT_EQ(frame[0], 1.0f);
+    EXPECT_FLOAT_EQ(frame[1], 2.0f);
+    EXPECT_FLOAT_EQ(frame[2], 3.0f);
+    EXPECT_FLOAT_EQ(frame[3], 0.0f);
+    EXPECT_FLOAT_EQ(frame[4], 0.0f);
+}
 
-    auto frame3 = framing::make_frame(x, 10, 5);
-    std::cout << "make_frame out of bounds\n";
-    if (frame3.size() != 5) return 1;
-    for (size_t i = 0; i < 5; ++i) {
-        if (frame3[i] != 0.0f) return 1;
-    }
+TEST(FramingTest, MakeFrameFromOffset) {
+    const std::vector<float> x = {1.0f, 2.0f, 3.0f};
 
-    size_t frames = framing::count_frames(100, 10, 5);
-    std::cout << "count_frames(100,10,5) = " << frames << "\n";
-    if (frames != 20) return 1;
+    const auto frame = framing::make_frame(x, 2, 3);
 
-    frames = framing::count_frames(100, 10, 7);
-    std::cout << "count_frames(100,10,7) = " << frames << "\n";
-    if (frames != 15) return 1;
+    ASSERT_EQ(frame.size(), 3);
+    EXPECT_FLOAT_EQ(frame[0], 3.0f);
+    EXPECT_FLOAT_EQ(frame[1], 0.0f);
+    EXPECT_FLOAT_EQ(frame[2], 0.0f);
+}
 
-    try {
-        framing::count_frames(100, 0, 5);
-        return 1;
-    } catch (const std::invalid_argument&) {
-    }
+TEST(FramingTest, CountFrames) {
+    EXPECT_EQ(framing::count_frames(0, 4, 2), 0);
+    EXPECT_EQ(framing::count_frames(1, 4, 2), 1);
+    EXPECT_EQ(framing::count_frames(8, 4, 2), 4);
+    EXPECT_EQ(framing::count_frames(9, 4, 2), 5);
+}
 
-    std::cout << "PASS\n";
-    return 0;
+TEST(FramingTest, CountFramesRejectsInvalidArguments) {
+    EXPECT_THROW(framing::count_frames(8, 0, 2), std::invalid_argument);
+    EXPECT_THROW(framing::count_frames(8, 4, 0), std::invalid_argument);
 }

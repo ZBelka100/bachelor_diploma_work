@@ -2,14 +2,14 @@
 #include "pseudospectrum.hpp"
 #include "reconstruction.hpp"
 #include "stft.hpp"
-#include "types.hpp"
 
-#include <cassert>
+#include <gtest/gtest.h>
+
+#include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <vector>
 
-int main() {
+TEST(IntegrationTest, FullWhtAndStftPipelineRuns) {
     const int sample_rate = 16000;
     const std::size_t n = 4096;
 
@@ -24,7 +24,7 @@ int main() {
     const std::size_t hop = 256;
     const auto window_type = WindowType::SqrtHann;
 
-    auto wht_frames = pseudospectrum::compute_wht_frames(
+    const auto wht_frames = pseudospectrum::compute_wht_frames(
         signal,
         sample_rate,
         frame_size,
@@ -34,13 +34,13 @@ int main() {
         true
     );
 
-    auto wht_spec = pseudospectrum::compute_from_frames(wht_frames);
+    const auto wht_spec = pseudospectrum::compute_from_frames(wht_frames);
 
-    assert(wht_spec.frames == wht_frames.frames);
-    assert(wht_spec.bins == wht_frames.bins);
-    assert(!wht_spec.db.empty());
+    EXPECT_EQ(wht_spec.frames, wht_frames.frames);
+    EXPECT_EQ(wht_spec.bins, wht_frames.bins);
+    EXPECT_FALSE(wht_spec.db.empty());
 
-    auto wht_rec = reconstruction::from_wht_frames(
+    const auto wht_rec = reconstruction::from_wht_frames(
         wht_frames,
         Ordering::Sequency,
         window_type,
@@ -48,15 +48,16 @@ int main() {
     );
 
     const std::size_t common = std::min(signal.size(), wht_rec.signal.size());
-    std::vector<float> ref(signal.begin(), signal.begin() + common);
-    std::vector<float> rec(wht_rec.signal.begin(), wht_rec.signal.begin() + common);
 
-    auto err = metrics::compare(ref, rec);
+    const std::vector<float> ref(signal.begin(), signal.begin() + common);
+    const std::vector<float> rec(wht_rec.signal.begin(), wht_rec.signal.begin() + common);
 
-    assert(err.rmse < 1e-3);
-    assert(err.snr_db > 40.0);
+    const auto err = metrics::compare(ref, rec);
 
-    auto stft_spec = stft::compute(
+    EXPECT_LT(err.rmse, 1e-3);
+    EXPECT_GT(err.snr_db, 40.0);
+
+    const auto stft_spec = stft::compute(
         signal,
         sample_rate,
         frame_size,
@@ -64,10 +65,7 @@ int main() {
         window_type
     );
 
-    assert(stft_spec.frames > 0);
-    assert(stft_spec.bins > 0);
-    assert(!stft_spec.db.empty());
-
-    std::cout << "test_integration passed\n";
-    return 0;
+    EXPECT_GT(stft_spec.frames, 0U);
+    EXPECT_GT(stft_spec.bins, 0U);
+    EXPECT_FALSE(stft_spec.db.empty());
 }

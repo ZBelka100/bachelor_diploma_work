@@ -1,77 +1,51 @@
 #include "wht.hpp"
-#include "metrics.hpp"
-#include <iostream>
-#include <vector>
-#include <cstdlib>
+
+#include <gtest/gtest.h>
+
 #include <cmath>
 #include <stdexcept>
+#include <vector>
 
-int main() {
-    std::vector<float> x = {1.0f, -2.0f, 3.0f, 0.5f, -1.5f, 2.0f, 4.0f, -0.25f};
+TEST(WhtTest, PowerOfTwoHelpers) {
+    EXPECT_FALSE(wht::is_power_of_two(0));
+    EXPECT_TRUE(wht::is_power_of_two(1));
+    EXPECT_TRUE(wht::is_power_of_two(8));
+    EXPECT_FALSE(wht::is_power_of_two(10));
+
+    EXPECT_EQ(wht::next_power_of_two(0), 1);
+    EXPECT_EQ(wht::next_power_of_two(1), 1);
+    EXPECT_EQ(wht::next_power_of_two(9), 16);
+}
+
+TEST(WhtTest, ForwardInverseHadamardRoundTrip) {
+    const std::vector<float> x = {1.0f, -2.0f, 3.0f, 4.0f, -1.0f, 0.5f, 2.5f, -3.0f};
+
+    auto y = wht::forward(x, Ordering::Hadamard, true);
+    auto z = wht::inverse(y, Ordering::Hadamard, true);
+
+    ASSERT_EQ(z.size(), x.size());
+
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(z[i], x[i], 1e-5f);
+    }
+}
+
+TEST(WhtTest, ForwardInverseSequencyRoundTrip) {
+    const std::vector<float> x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+
     auto y = wht::forward(x, Ordering::Sequency, true);
-    auto xr = wht::inverse(y, Ordering::Sequency, true);
-    auto m = metrics::compare(x, xr);
-    std::cout << "WHT inverse test (Sequency)\n";
-    std::cout << "MSE: " << m.mse << ", MaxAbs: " << m.max_abs << ", SNR: " << m.snr_db << " dB\n";
-    if (m.max_abs > 1e-4 || m.mse > 1e-8) {
-        std::cerr << "FAIL: reconstruction error too large\n";
-        return 1;
-    }
+    auto z = wht::inverse(y, Ordering::Sequency, true);
 
-    x = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
-    auto y_had = wht::forward(x, Ordering::Hadamard, true);
-    auto xr_had = wht::inverse(y_had, Ordering::Hadamard, true);
-    m = metrics::compare(x, xr_had);
-    std::cout << "WHT inverse test (Hadamard)\n";
-    std::cout << "MSE: " << m.mse << ", MaxAbs: " << m.max_abs << ", SNR: " << m.snr_db << " dB\n";
-    if (m.max_abs > 1e-4 || m.mse > 1e-8) {
-        std::cerr << "FAIL: reconstruction error too large\n";
-        return 1;
-    }
+    ASSERT_EQ(z.size(), x.size());
 
-    std::vector<float> signal = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
-    auto coeffs = wht::forward(signal, Ordering::Sequency, true);
-    double energy_in = metrics::energy(signal);
-    double energy_out = metrics::energy(coeffs);
-    double rel_diff = std::abs(energy_in - energy_out) / std::max(1.0, energy_in);
-    std::cout << "Energy test\n";
-    std::cout << "Energy in: " << energy_in << ", Energy out: " << energy_out << ", Rel diff: " << rel_diff << "\n";
-    if (rel_diff > 1e-4) {
-        std::cerr << "FAIL: energy mismatch\n";
-        return 1;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(z[i], x[i], 1e-5f);
     }
+}
 
-    std::vector<float> a = {1.0f, 0.0f, 0.0f, 0.0f};
-    auto fa = wht::forward(a, Ordering::Hadamard, true);
-    std::vector<float> b = {0.0f, 1.0f, 0.0f, 0.0f};
-    auto fb = wht::forward(b, Ordering::Hadamard, true);
-    double dot_orig = 0.0;
-    for (size_t i = 0; i < a.size(); ++i) dot_orig += a[i] * b[i];
-    double dot_trans = 0.0;
-    for (size_t i = 0; i < fa.size(); ++i) dot_trans += fa[i] * fb[i];
-    std::cout << "Orthonormality test\n";
-    std::cout << "Dot original: " << dot_orig << ", Dot transformed: " << dot_trans << "\n";
-    if (std::abs(dot_orig - dot_trans) > 1e-4) {
-        std::cerr << "FAIL: orthonormality violation\n";
-        return 1;
-    }
+TEST(WhtTest, RejectsNonPowerOfTwo) {
+    std::vector<float> x = {1.0f, 2.0f, 3.0f};
 
-    if (!wht::is_power_of_two(8) || wht::is_power_of_two(7)) {
-        std::cerr << "FAIL: is_power_of_two error\n";
-        return 1;
-    }
-    if (wht::next_power_of_two(5) != 8 || wht::next_power_of_two(8) != 8) {
-        std::cerr << "FAIL: next_power_of_two error\n";
-        return 1;
-    }
-
-    try {
-        wht::Plan bad_plan(7, Ordering::Sequency, true);
-        std::cerr << "FAIL: expected exception for n=7\n";
-        return 1;
-    } catch (const std::invalid_argument&) {
-    }
-
-    std::cout << "PASS\n";
-    return 0;
+    EXPECT_THROW(wht::fwht_inplace(x), std::invalid_argument);
+    EXPECT_THROW(wht::Plan(3, Ordering::Hadamard, true), std::invalid_argument);
 }

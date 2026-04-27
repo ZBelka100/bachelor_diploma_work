@@ -113,11 +113,23 @@ enable_perf_opts(benchmark_app)
 if (BUILD_TESTING)
     enable_testing()
 
+    include(FetchContent)
+
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+    )
+
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    include(GoogleTest)
+
     function(add_unit_test test_name)
         add_executable(${test_name} tests/${test_name}.cpp)
-        target_link_libraries(${test_name} PRIVATE core)
-        add_test(NAME ${test_name} COMMAND ${test_name})
+        target_link_libraries(${test_name} PRIVATE core GTest::gtest_main)
         enable_strict_warnings(${test_name})
+        gtest_discover_tests(${test_name})
     endfunction()
 
     add_unit_test(test_wht)
